@@ -1,0 +1,31 @@
+[build-system]
+requires = ["setuptools", "setuptools-scm"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "skidson_aoc"
+authors = [
+    {name = "Stephen Kidson", email = "stephenkidson@gmail.com"},
+]
+description = "Advent of Code package for my submissions"
+readme = "README.md"
+requires-python = ">=3.8"
+dynamic = ["version"]
+dependencies = [
+    "click",
+    "importlib-resources",
+    "setuptools>=61.2"
+]
+dev = [
+    "black"
+]
+test = [
+    "pytest"
+]
+
+[project.scripts]
+run = "skidson.aoc.runner:run"
+
+[project.urls]
+Repository = "https://github.com/skidson/advent-of-code.git"
+Issues = "https://github.com/skidson/advent-of-code/issues"
