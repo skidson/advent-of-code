@@ -1,35 +1,76 @@
+import logging
 import sys
 from typing import List, Dict, Optional
-import logging
 
 log_handler = logging.StreamHandler(sys.stdout)
-log_handler.setFormatter(logging.Formatter("[%(asctime)s] %(name)s:%(levelname)s - %(message)s"))
+log_handler.setFormatter(logging.Formatter("[%(asctime)s[(%(levelname)s] %(name)s: %(message)s"))
 log = logging.getLogger(__name__)
 log.addHandler(log_handler)
-log.setLevel(logging.INFO)
+log.setLevel(logging.DEBUG)
 
 START_KEY = 'seed'
 END_KEY = 'location'
 
 
-class Range:
+class KeyRange:
+    def __init__(self, start: int, end: int):
+        """
+        A numerical range.
+        :param start: the start of the range, inclusive
+        :param end:  the end of the range, exclusive
+        """
+        self.start = start
+        self.end = end
+
+    def __str__(self):
+        return f'{{start: {self.start}, end: {self.end}, (length: {self.end - self.start})}}'
+
+    def __repr__(self):
+        return self.__str__()
+
+
+class Result:
+    def __init__(self, match: Optional[KeyRange], leftover: List[KeyRange]):
+        self.match = match
+        self.leftover = leftover
+
+
+class AlmanacRange(KeyRange):
     def __init__(self, source_start: int, dest_start: int, length: int):
-        self.source_start = source_start
-        self.dest_start = dest_start
-        self.length = length
+        super().__init__(source_start, source_start + length)
+        self.offset = dest_start - source_start
 
-    def find(self, key: int) -> Optional[int]:
-        if key < self.source_start or key >= self.source_start + self.length:
-            return None
-        return self.dest_start + (key - self.source_start)
+    def match(self, key_range: KeyRange) -> Result:
+        if key_range.end <= self.start or key_range.start >= self.end:
+            return Result(None, [key_range])
+        match_start = max(key_range.start, self.start)
+        match_end = min(key_range.end, self.end)
+        match = KeyRange(match_start + self.offset, match_end + self.offset)
 
-def solve(input_text: str) -> Dict[str, any]:
+        leftover = []
+        if match_start > key_range.start:
+            leftover.append(KeyRange(key_range.start, match_start))
+        if match_end < key_range.end:
+            leftover.append(KeyRange(match_end, key_range.end))
+
+        return Result(match, leftover)
+
+    def __str__(self):
+        return f'{{start: {self.start}, end: {self.end}, offset: {self.offset}}}'
+
+
+def solve(input_text: str) -> int:
     lines = input_text.splitlines()
-    seeds = lines[0][7:].split()
-    maps: Dict[str, Dict[str, List[Range]]] = {}
+    maps: Dict[str, Dict[str, List[AlmanacRange]]] = build_maps(lines)
 
-    # FIXME while probably technically correct, building the full map like this isn't performant and doesn't finish in
-    #  time. We need to use a custom data structure that checks the range instead
+    log.info('Finding closest location...')
+    seeds = lines[0][7:].split()
+    return find_lowest_location(seeds, maps)
+
+
+def build_maps(lines: List[str]) -> Dict[str, Dict[str, List[AlmanacRange]]]:
+    maps: Dict[str, Dict[str, List[AlmanacRange]]] = {}
+
     i = 1
     while i < len(lines):
         # skip blank lines
@@ -45,45 +86,52 @@ def solve(input_text: str) -> Dict[str, any]:
         i += 1
         while i < len(lines) and lines[i]:
             log.debug(f'Parsing range {lines[i]}...')
-            dest_source_range = lines[i].split()
-
             if not maps.get(source):
                 maps[source] = {}
             if not maps[source].get(dest):
                 maps[source][dest] = []
 
-            maps[source][dest].append(
-                Range(int(dest_source_range[1]), int(dest_source_range[0]), int(dest_source_range[2]))
-            )
-
+            maps[source][dest].append(build_range(lines[i]))
             i += 1
 
-    log.info('Find closest location...')
-    end_to_start = {}
-    for seed in seeds:
+    return maps
+
+
+def build_range(line: str) -> AlmanacRange:
+    dest_source_range = line.split()
+    return AlmanacRange(int(dest_source_range[1]), int(dest_source_range[0]), int(dest_source_range[2]))
+
+
+def find_lowest_location(seeds: List[str], maps: Dict[str, Dict[str, List[AlmanacRange]]]) -> int:
+    location_ranges = []
+    for i in range(0, len(seeds), 2):
+        start = int(seeds[i])
+        seed_range = KeyRange(start, start + int(seeds[i+1]))
+        search_ranges = [seed_range]
         key = START_KEY
-        value = int(seed)
         while key != END_KEY:
             # TODO this assumes only one child key - i.e. a tree where only the parents of leaf nodes can have
             #  more than one child
             subkey = next(iter(maps[key].keys()))
-            match = None
+            matches = []
             for r in maps[key][subkey]:
-                match = r.find(value)
-                if match is not None:
-                    break
+                for key_range in search_ranges:
+                    result = r.match(key_range)
+                    if result.match is None:
+                        continue
 
-            if match is not None:
-                value = match
+                    matches.append(result.match)
+                    search_ranges.remove(key_range)
+                    search_ranges += result.leftover
+
+            search_ranges += matches
             key = subkey
-        end_to_start[value] = seed
+        location_ranges += search_ranges
+        log.debug(f'Mapped seed range {seed_range} to locations {search_ranges}')
 
-    min_end = None
-    for end in end_to_start.keys():
-        if min_end is None or end < min_end:
-            min_end = end
+    min_location = None
+    for key_range in location_ranges:
+        if min_location is None or key_range.start < min_location:
+            min_location = key_range.start
 
-    return {
-        'seed': end_to_start[min_end],
-        'location': min_end
-    }
+    return min_location
