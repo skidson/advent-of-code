@@ -1,5 +1,6 @@
 import logging
 import sys
+from dataclasses import dataclass
 from typing import List, Dict, Optional
 
 log_handler = logging.StreamHandler(sys.stdout)
@@ -12,27 +13,16 @@ START_KEY = 'seed'
 END_KEY = 'location'
 
 
+@dataclass(repr=True)
 class KeyRange:
-    def __init__(self, start: int, end: int):
-        """
-        A numerical range.
-        :param start: the start of the range, inclusive
-        :param end:  the end of the range, exclusive
-        """
-        self.start = start
-        self.end = end
-
-    def __str__(self):
-        return f'{{start: {self.start}, end: {self.end}, (length: {self.end - self.start})}}'
-
-    def __repr__(self):
-        return self.__str__()
+    start: int
+    end: int
 
 
+@dataclass
 class Result:
-    def __init__(self, match: Optional[KeyRange], leftover: List[KeyRange]):
-        self.match = match
-        self.leftover = leftover
+    match: Optional[KeyRange]
+    leftover: List[KeyRange]
 
 
 class AlmanacRange(KeyRange):
